@@ -1,7 +1,10 @@
 package sample.webflux.websocket.netty.handler;
 
 import java.nio.channels.ClosedChannelException;
+import java.nio.charset.StandardCharsets;
+import java.util.Date;
 
+import org.springframework.web.reactive.socket.WebSocketMessage;
 import org.springframework.web.reactive.socket.WebSocketSession;
 
 import reactor.core.publisher.Flux;
@@ -11,29 +14,28 @@ import reactor.core.publisher.ReplayProcessor;
 import reactor.core.scheduler.Schedulers;
 import reactor.ipc.netty.channel.AbortedException;
 
-public class WebSocketSessionHandler 
+public class WebSocketSessionHandler
 {
 	private final ReplayProcessor<String> receiveProcessor;
 	private final MonoProcessor<WebSocketSession> connectedProcessor;
 	private final MonoProcessor<WebSocketSession> disconnectedProcessor;
-	
+
 	private boolean webSocketConnected;
-	private WebSocketSession session;	
-	
+	private WebSocketSession session;
+
 	public WebSocketSessionHandler()
 	{
 		this(50);
 	}
-	
+
 	public WebSocketSessionHandler(int historySize)
 	{
 		receiveProcessor = ReplayProcessor.create(historySize);
 		connectedProcessor = MonoProcessor.create();
 		disconnectedProcessor = MonoProcessor.create();
-		
 		webSocketConnected = false;
 	}
-	
+
 	protected Mono<Void> handle(WebSocketSession session)
 	{
 		this.session = session;
@@ -47,7 +49,7 @@ public class WebSocketSessionHandler
 		
 		Mono<Object> connected =
 				Mono
-					.fromRunnable(() -> 
+					.fromRunnable(() ->
 					{
 						webSocketConnected = true;
 						connectedProcessor.onNext(session);
@@ -55,13 +57,13 @@ public class WebSocketSessionHandler
 
 		Mono<Object> disconnected =
 				Mono
-					.fromRunnable(() -> 
+					.fromRunnable(() ->
 					{
 						webSocketConnected = false;
 						disconnectedProcessor.onNext(session);
 					})
 					.doOnNext(value -> receiveProcessor.onComplete());
-			
+
 		return connected.thenMany(receive).then(disconnected).then();
 	}
 	
@@ -69,12 +71,12 @@ public class WebSocketSessionHandler
 	{
 		return connectedProcessor;
 	}
-	
+
 	public Mono<WebSocketSession> disconnected()
 	{
 		return disconnectedProcessor;
 	}
-	
+
 	public boolean isConnected()
 	{
 		return webSocketConnected;
@@ -84,7 +86,7 @@ public class WebSocketSessionHandler
 	{
 		return receiveProcessor;
 	}
-	
+
 	public void send(String message)
 	{
 		if (webSocketConnected)
@@ -96,9 +98,36 @@ public class WebSocketSessionHandler
 				.onErrorResume(ClosedChannelException.class, t -> Mono.empty())
 				.onErrorResume(AbortedException.class, t -> Mono.empty())
 				.subscribe();
-		}	
+		}
 	}
-	
+
+	public void sendPing()
+	{
+		if (webSocketConnected)
+		{
+			session
+					.send(Mono.just(session.pingMessage(factory -> factory.wrap("ping".getBytes(StandardCharsets.UTF_8)))))
+					.doOnError(ClosedChannelException.class, t -> connectionClosed())
+					.doOnError(AbortedException.class, t -> connectionClosed())
+					.onErrorResume(ClosedChannelException.class, t -> Mono.empty())
+					.onErrorResume(AbortedException.class, t -> Mono.empty())
+					.subscribe();
+		}
+	}
+	public void sendPong()
+	{
+		if (webSocketConnected)
+		{
+			session
+					.send(Mono.just(session.pongMessage(factory -> factory.wrap(new Date().toString().getBytes(StandardCharsets.UTF_8)))))
+					.doOnError(ClosedChannelException.class, t -> connectionClosed())
+					.doOnError(AbortedException.class, t -> connectionClosed())
+					.onErrorResume(ClosedChannelException.class, t -> Mono.empty())
+					.onErrorResume(AbortedException.class, t -> Mono.empty())
+					.subscribe();
+		}
+	}
+
 	private void connectionClosed()
 	{
 		if (webSocketConnected)

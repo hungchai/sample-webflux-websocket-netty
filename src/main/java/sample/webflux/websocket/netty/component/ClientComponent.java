@@ -4,6 +4,8 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Duration;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
@@ -32,7 +34,10 @@ public class ClientComponent implements ApplicationListener<ApplicationReadyEven
 	
 	@Value("${sample.path}")
 	private String samplePath;
-	
+
+	private final Logger logger = LoggerFactory.getLogger(getClass());
+
+
 	@Override
 	public void onApplicationEvent(ApplicationReadyEvent event) 
 	{
@@ -40,10 +45,9 @@ public class ClientComponent implements ApplicationListener<ApplicationReadyEven
 		Disposable logicOne = clientLogic.start(webSocketClient, getURI(), new ClientWebSocketHandler());
 		Disposable logicTwo = clientLogic.start(webSocketClient, getURI(), new ClientWebSocketHandler());
 		
-		Mono
-			.delay(Duration.ofSeconds(10))
-			.doOnEach(value -> logicOne.dispose())
-			.doOnEach(value -> logicTwo.dispose())
+		Mono.delay(Duration.ofSeconds(100))
+			.doOnEach(value -> { logger.info("value logic1: "+value); logicOne.dispose();})
+			.doOnEach(value -> { logger.info("value logic2: "+value); logicTwo.dispose();})
 			.map(value -> SpringApplication.exit(applicationContext, () -> 0))
 			.subscribe(exitValue -> System.exit(exitValue));
 	}
